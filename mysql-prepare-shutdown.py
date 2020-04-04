@@ -18,28 +18,34 @@ def mysql_options():
 
 def mysql_connect():
     if os.path.expanduser(options.defaults_file):
-        conn = pymysql.connect(read_default_file = options.defaults_file)
+        connection = pymysql.connect(read_default_file = options.defaults_file)
     else:
         if options.ask_pass:
             password = getpass.getpass()
         else:
             password = options.password
-        conn = pymysql.connect(host = options.host, user = options.user, password = password, unix_socket = options.socket)
-    return conn;
+        connection = pymysql.connect(
+               host = options.host,
+               user = options.user,
+               password = password,
+               unix_socket = options.socket)
+    return connection;
 
 def get_mysql_variable(variable_name):
-    connection = conn
     cursorclass=pymysql.cursors.DictCursor
-    with connection.cursor() as cursor:
+    with conn.cursor() as cursor:
         sql = "SHOW GLOBAL VARIABLES WHERE VARIABLE_NAME=%s";
         cursor.execute(sql, (variable_name))
-        #cursor.execute(sql)
-        result = cursor.fetchone()
-        cursor.close()
-        value = result[1]
-        print(value)
+        row = cursor.fetchone()
+        value = row[1]
+    cursor.close()
+    return value;
 
 (options, args) = mysql_options()
 conn = mysql_connect()
-get_mysql_variable("slave_parallel_workers")
+mts = get_mysql_variable("slave_parallel_workers")
+if mts > 0:
+  print "slave is mts"
+else:
+  print "slave is not mts"
 conn.close()
