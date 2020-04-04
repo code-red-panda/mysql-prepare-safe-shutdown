@@ -32,10 +32,41 @@ def mysql_connect():
     return connection;
 
 def get_mysql_variable(variable_name):
-    cursorclass=pymysql.cursors.DictCursor
     with conn.cursor() as cursor:
         sql = "SHOW GLOBAL VARIABLES WHERE VARIABLE_NAME=%s";
         cursor.execute(sql, (variable_name))
+        result = cursor.fetchone()
+        value = result[1]
+    cursor.close()
+    return value;
+
+def get_mysql_slave_status():
+    with conn.cursor(pymysql.cursors.DictCursor) as cursor:
+        sql = "SHOW SLAVE STATUS";
+        cursor.execute(sql)
+        result = cursor.fetchone()
+    cursor.close()
+    if result is not None:
+        master_log_file = result["Master_Log_File"]
+        read_master_log_pos = int(result["Read_Master_Log_Pos"])
+        relay_master_log_file = result["Relay_Master_Log_File"]
+        exec_master_log_pos = int(result["Exec_Master_Log_Pos"])
+        if master_log_file == relay_master_log_file:
+            print("Files match")
+        else:
+            print("Files do not match")
+        if read_master_log_pos == exec_master_log_pos:
+            print("Pos match")
+        else:
+            print("Pos do not match")
+    else:
+        print("This is not a slave")
+       
+def stop_slave_single_thread():
+    cursorclass=pymysql.cursors.DictCursor
+    with conn.cursor() as cursor:
+        sql = "STOP SLAVE IO_THREAD";
+        cursor.execute(sql)
         row = cursor.fetchone()
         value = row[1]
     cursor.close()
@@ -43,8 +74,9 @@ def get_mysql_variable(variable_name):
 
 (options, args) = mysql_options()
 conn = mysql_connect()
-mts = get_mysql_variable("slave_parallel_workers")
-if mts > 0:
+get_mysql_slave_status()
+slave_parallel_workers = int(get_mysql_variable("slave_parallel_workers"))
+if slave_parallel_workers > 0:
   print "slave is mts"
 else:
   print "slave is not mts"
