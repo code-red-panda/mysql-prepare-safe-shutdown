@@ -5,6 +5,7 @@ import pymysql.cursors
 import os.path
 import time
 from optparse import OptionParser
+from prettytable import PrettyTable
 
 def mysql_options():
     parser = OptionParser()
@@ -15,12 +16,18 @@ def mysql_options():
     parser.add_option("-P", "--port", dest="port", type="int", default="3306", help="MySQL port. Default: 3306")
     parser.add_option("-S", "--socket", dest="socket", default="/var/lib/mysql/mysql.sock", help="MySQL socket. Default: /var/lib/mysql/mysql.sock")
     parser.add_option("--defaults-file", dest="defaults_file", default="~/.my.cnf", help="Use MySQL configuration file. Default: ~/.my.cnf")
+    parser.add_option("-t", "--no-transaction-check", action="store_true", dest="no_transaction_check", help="Do not check for transactions running > 60 seconds.")
     parser.add_option("-v", "--verbose", dest="verbose", action="store_true", help="Print additional information.")
     return parser.parse_args()
 
 def verbose(message):
     if options.verbose:
         print("%s") % message
+
+def error(message):
+    print("ERROR: %s")% message
+    print("Aborting...")
+    exit(1)
 
 def mysql_connect():
     if os.path.expanduser(options.defaults_file):
@@ -55,7 +62,7 @@ def mysql_get_status_variable(variable_name):
     cursor.close()
     return value;
 
-def mysql_is_slave():
+def mysql_check_is_slave():
     with conn.cursor(pymysql.cursors.DictCursor) as cursor:
         sql = "SHOW SLAVE STATUS";
         cursor.execute(sql)
@@ -87,7 +94,7 @@ def mysql_stop_slave_single_thread():
     else:
         verbose("IO thread was already stopped...")
     if slave_sql_running == "Yes":
-        mysql_is_slave_current()
+        mysql_check_is_slave_current()
         verbose("Stopping SQL thread.")
         with conn.cursor() as cursor:
             sql = "STOP SLAVE SQL_thread";
@@ -100,7 +107,7 @@ def mysql_stop_slave_single_thread():
         print("Slave was already stopped.")
     cursor.close()
 
-def mysql_is_slave_current():
+def mysql_check_is_slave_current():
     timeout = time.time() + 60
     while True:
         with conn.cursor(pymysql.cursors.DictCursor) as cursor:
@@ -122,10 +129,26 @@ def mysql_is_slave_current():
         else:
             print("Slave is lagging %s seconds behind master...waiting for it to catch up." % seconds_behind_master)
             time.sleep(5)
-       
+
+def mysql_check_open_transactions():
+    with conn.cursor() as cursor:
+        sql = "SELECT trx_id, trx_started, (NOW() - trx_started) trx_duration_seconds, id processlist_id, user, IF(LEFT(HOST, (LOCATE(':', host) - 1)) = '', host, LEFT(HOST, (LOCATE(':', host) - 1))) host, command, time, REPLACE(SUBSTRING(info,1,25),'\n','') info_25 FROM information_schema.innodb_trx JOIN information_schema.processlist ON innodb_trx.trx_mysql_thread_id = processlist.id WHERE (NOW() - trx_started) > 60 ORDER BY trx_started"
+        cursor.execute(sql)
+        result = cursor.fetchall()
+        columns = cursor.description
+    cursor.close()
+    if result is None:
+        verbose("There are no transactions running > 60 seconds.")
+    else:
+        x = PrettyTable([columns[0][0], columns[1][0], columns[2][0], columns[3][0], columns[4][0], columns[5][0], columns[6][0], columns[7][0], columns[8][0]]) 
+        for row in result:
+            x.add_row([row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]])
+        print x
+        error("There are transactions running > 60 seconds.")
+
 def mysql_prepare_shutdown():
     print("Preparing MySQL for shutdown...")
-    is_slave = int(mysql_is_slave())
+    is_slave = int(mysql_check_is_slave())
     if is_slave:
         print("Stopping replication...")
         slave_parallel_workers = int(mysql_get_global_variable("slave_parallel_workers"))
@@ -133,7 +156,10 @@ def mysql_prepare_shutdown():
             verbose("This is a multi-threaded slave.")
         else:
            mysql_stop_slave_single_thread()
-    # check for open trx > 60s
+    if options.no_transaction_check is None:
+        mysql_check_open_transactions()
+    else:
+        verbose("--no-transaction-check was used. Not checking for transactions running > 60 seconds.")
     # kill long running connections
     # fast shutdown=0, max dirty pages = 0
     # print safe to shutdown
