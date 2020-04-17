@@ -194,8 +194,7 @@ def mysql_prepare_safe_shutdown():
     if is_slave:
         slave_parallel_workers = int(mysql_get_global_variable("slave_parallel_workers"))
         if slave_parallel_workers > 0:
-            # Move message to function
-            verbose("This is a multi-threaded slave.")
+            error("This is a multi-threaded slave.")
         else:
            mysql_stop_slave_single_thread()
 

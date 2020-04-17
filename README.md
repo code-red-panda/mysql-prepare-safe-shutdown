@@ -39,6 +39,6 @@ Options:
 ```
 
 # Limitations
-This tool currently should not preparee:
+This tool currently should not prepare:
 - Multi-threaded slaves. It will exit if `slave_parallel_workers > 0`.
 - Multi-channel slaves. It does not even check for this condition.
