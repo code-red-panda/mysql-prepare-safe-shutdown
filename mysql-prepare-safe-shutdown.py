@@ -27,17 +27,19 @@ def verbose(message):
     if options.verbose:
         print(">>> %s") % message
 
+def warn(message):
+    print(">>> [ WARNING ]: %s") % message
+
 def error(message):
-    print(">>> CRITICAL: %s")% message
-    print(">>> Todo: revert settings!")
+    print(">>> [ CRITICAL ]: %s")% message
     exit(1)
 
 def mysql_connect():
     if options.defaults_file is not None:
         connection = pymysql.connect(read_default_file = options.defaults_file)
-    elif os.path.expanduser("~/.my.cnf"):
-        defaults_file = os.path.expanduser("~/.my.cnf")
-        connection = pymysql.connect(read_default_file = defaults_file)
+    #elif os.path.expanduser("~/.my.cnf"):
+        #defaults_file = os.path.expanduser("~/.my.cnf")
+        #connection = pymysql.connect(read_default_file = defaults_file)
     else:
         if options.ask_pass:
             password = getpass.getpass()
@@ -118,7 +120,7 @@ def mysql_stop_slave_single_thread():
     else:
         verbose("SQL thread was already stopped.")
     if slave_io_running == "No" and slave_sql_running == "No":
-        info("Replication was already stopped.")
+        warn("Replication was already stopped.")
 
 def mysql_check_long_transactions():
     info("Checking for long running transactions.")
@@ -128,7 +130,6 @@ def mysql_check_long_transactions():
         result = cursor.fetchone()
     cursor.close()
     if result:
-        info("There are transactions running > 60 seconds.")
         with conn.cursor() as cursor:
             sql = "SELECT trx_id, trx_started, (NOW() - trx_started) trx_duration_seconds, id processlist_id, user, IF(LEFT(HOST, (LOCATE(':', host) - 1)) = '', host, LEFT(HOST, (LOCATE(':', host) - 1))) host, command, time, REPLACE(SUBSTRING(info,1,25),'\n','') info_25 FROM information_schema.innodb_trx JOIN information_schema.processlist ON innodb_trx.trx_mysql_thread_id = processlist.id WHERE (NOW() - trx_started) > 60 ORDER BY trx_started"
             cursor.execute(sql)
@@ -139,7 +140,7 @@ def mysql_check_long_transactions():
         for row in result:
             x.add_row([row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]])
         print x
-        error("COMMIT, ROLLBACK, or kill these transactions. Otherwise, use --no-transaction-check to ignore them.")
+        error("Transaction(s) running > 60 seconds. COMMIT, ROLLBACK, or kill it/them. Otherwise, use the less safe --no-transaction-check.")
     else:
         verbose("There are no transactions running > 60 seconds.")
 
@@ -165,11 +166,11 @@ def mysql_check_dirty_pages():
             info("Dirty pages < 500.")
             break
         elif time.time() > timeout:
-            info("Dirty pages is %s, and has not reached < 10% of the starting count after 1 minute. Continuing to prepare for shutdown." % dirty_pages_current)
+            warn("Dirty pages is %s, and did not reach < 10 pct of the starting count after 1 minute." % dirty_pages_current)
             break
         else:
             info("Dirty pages is %s, waiting (up to 1 minute) for it to get lower." % dirty_pages_current)
-            time.sleep(5)
+            time.sleep(1)
 
 def mysql_set_fast_shutdown():
     info("Setting innodb_fast_shutdown to 0.")
@@ -182,13 +183,9 @@ def mysql_set_buffer_pool_dump():
     mysql_query("SET GLOBAL innodb_buffer_pool_dump_pct = 75")
     buffer_pool_load = mysql_get_global_variable("innodb_buffer_pool_load_at_startup")
     if buffer_pool_load != "ON":
-        info("innodb_buffer_pool_load_at_startup is not enabled. You may want to set this in the my.cnf.")
-        info("innodb_buffer_pool_load_at_startup = ON")
+        warn("innodb_buffer_pool_load_at_startup is not enabled. You may want to set this in the my.cnf: innodb_buffer_pool_load_at_startup = ON")
 
 def mysql_prepare_safe_shutdown():
-    print("\n" + time.ctime())
-    info("Preparing MySQL for shutdown.")
-
     # Check if the host is a slave. If true, stop replication.
     is_slave = int(mysql_check_is_slave())
     if is_slave:
@@ -217,10 +214,19 @@ def mysql_prepare_safe_shutdown():
     mysql_set_buffer_pool_dump()
 
     # catch ctr+c
+    # revert settings on error
+    # add multi-thread/multi-channel slave support
 
-(options, args) = mysql_options()
-conn = mysql_connect()
-mysql_prepare_safe_shutdown()
-conn.close()
-
-print("\nMySQL is prepared for a safe shutdown!")
+try:
+    print("\n" + time.ctime())
+    info("Preparing MySQL for shutdown.")
+    conn = None
+    (options, args) = mysql_options()
+    conn = mysql_connect()
+    mysql_prepare_safe_shutdown()
+    print("\nMySQL is prepared for a safe shutdown!")
+except pymysql.Error as e:
+    error("ERROR " + str(e[0]) + ": " + e[1])
+finally:
+    if conn:
+        conn.close()
