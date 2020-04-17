@@ -14,10 +14,10 @@ def mysql_options():
     parser.add_option("--ask-pass", dest="ask_pass", action="store_true", help="Ask for password")
     parser.add_option("-H", "--host", type="string", dest="host", default="localhost", help="MySQL host. Default: localhost")
     parser.add_option("-P", "--port", type="int", dest="port", default="3306", help="MySQL port. Default: 3306")
-    parser.add_option("-S", "--socket", type="string", dest="socket", metavar="SOCK", help="MySQL socket. Default: /var/lib/mysql/mysql.sock")
-    parser.add_option("--defaults-file", dest="defaults_file", metavar="FILE", help="Use MySQL configuration file. Default: ~/.my.cnf")
+    parser.add_option("-S", "--socket", type="string", dest="socket", metavar="SOCK", help="MySQL socket.")
+    parser.add_option("--defaults-file", dest="defaults_file", metavar="FILE", help="Use MySQL configuration file")
     parser.add_option("-t", "--no-transaction-check", action="store_true", dest="no_transaction_check", help="Do not check for transactions running > 60 seconds.")
-    parser.add_option("-v", "--verbose", dest="verbose", action="store_true", help="Print additional information.")
+    parser.add_option("-v", "--verbose", dest="verbose", action="store_true", help="Print additional information")
     return parser.parse_args()
 
 def info(message):
