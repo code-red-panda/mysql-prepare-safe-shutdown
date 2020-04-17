@@ -20,13 +20,16 @@ def mysql_options():
     parser.add_option("-v", "--verbose", dest="verbose", action="store_true", help="Print additional information.")
     return parser.parse_args()
 
+def info(message):
+    print(">>> %s") % message
+
 def verbose(message):
     if options.verbose:
-        print("%s") % message
+        print(">>> %s") % message
 
 def error(message):
-    print("ERROR: %s")% message
-    print("Aborting...")
+    print(">>> CRITICAL: %s")% message
+    print(">>> Todo: revert settings!")
     exit(1)
 
 def mysql_connect():
@@ -42,7 +45,7 @@ def mysql_connect():
                user = options.user,
                password = password,
                unix_socket = options.socket)
-    return connection;
+    return connection
 
 def mysql_get_global_variable(variable_name):
     with conn.cursor() as cursor:
@@ -51,7 +54,7 @@ def mysql_get_global_variable(variable_name):
         result = cursor.fetchone()
         value = result[1]
     cursor.close()
-    return value;
+    return value
 
 def mysql_get_status_variable(variable_name):
     with conn.cursor() as cursor:
@@ -60,7 +63,12 @@ def mysql_get_status_variable(variable_name):
         result = cursor.fetchone()
         value = result[1]
     cursor.close()
-    return value;
+    return value
+
+def mysql_query(sql):
+    with conn.cursor() as cursor:
+        cursor.execute(sql)
+    cursor.close()
 
 def mysql_check_is_slave():
     with conn.cursor(pymysql.cursors.DictCursor) as cursor:
@@ -69,14 +77,15 @@ def mysql_check_is_slave():
         result = cursor.fetchone()
     cursor.close()
     if result is None:
-        verbose("This is not a slave.")
-        value = 0;
+        verbose("This is not a slave. Skipping replication tasks.")
+        value = 0
     else:
         verbose("This is a slave.")
-        value = 1;
-    return value;
+        value = 1
+    return value
 
 def mysql_stop_slave_single_thread():
+    info("Stopping replication.")
     with conn.cursor(pymysql.cursors.DictCursor) as cursor:
         sql = "SHOW SLAVE STATUS";
         cursor.execute(sql)
@@ -92,9 +101,10 @@ def mysql_stop_slave_single_thread():
             result = cursor.fetchone()
         cursor.close()
     else:
-        verbose("IO thread was already stopped...")
+        verbose("IO thread was already stopped.")
     if slave_sql_running == "Yes":
-        mysql_check_is_slave_current()
+        verbose("Giving the SQL thread 5 seconds to catch up.")
+        time.sleep(5)
         verbose("Stopping SQL thread.")
         with conn.cursor() as cursor:
             sql = "STOP SLAVE SQL_thread";
@@ -102,66 +112,84 @@ def mysql_stop_slave_single_thread():
             result = cursor.fetchone()
         cursor.close()
     else:
-        verbose("SQL thread was already stopped...")
+        verbose("SQL thread was already stopped.")
     if slave_io_running == "No" and slave_sql_running == "No":
-        print("Slave was already stopped.")
-    cursor.close()
+        info("Replication was already stopped.")
 
-def mysql_check_is_slave_current():
-    timeout = time.time() + 60
-    while True:
-        with conn.cursor(pymysql.cursors.DictCursor) as cursor:
-            sql = "SHOW SLAVE STATUS";
-            cursor.execute(sql)
-            result = cursor.fetchone()
-        cursor.close()
-        master_log_file = result["Master_Log_File"]
-        read_master_log_pos = int(result["Read_Master_Log_Pos"])
-        relay_master_log_file = result["Relay_Master_Log_File"]
-        exec_master_log_pos = int(result["Exec_Master_Log_Pos"])
-        seconds_behind_master = result["Seconds_Behind_Master"]
-        if master_log_file == relay_master_log_file and read_master_log_pos == exec_master_log_pos:
-            print("Slave is current with master.")
-            break
-        elif time.time() > timeout:
-            print("Slave has not caught up with master after 1 minute. Continuing to prepare for shutdown.")
-            break
-        else:
-            print("Slave is lagging %s seconds behind master...waiting for it to catch up." % seconds_behind_master)
-            time.sleep(5)
-
-def mysql_check_open_transactions():
+def mysql_check_long_transactions():
+    info("Checking for long running transactions.")
     with conn.cursor() as cursor:
-        sql = "SELECT trx_id, trx_started, (NOW() - trx_started) trx_duration_seconds, id processlist_id, user, IF(LEFT(HOST, (LOCATE(':', host) - 1)) = '', host, LEFT(HOST, (LOCATE(':', host) - 1))) host, command, time, REPLACE(SUBSTRING(info,1,25),'\n','') info_25 FROM information_schema.innodb_trx JOIN information_schema.processlist ON innodb_trx.trx_mysql_thread_id = processlist.id WHERE (NOW() - trx_started) > 60 ORDER BY trx_started"
+        sql = "SELECT 1 FROM information_schema.innodb_trx JOIN information_schema.processlist ON innodb_trx.trx_mysql_thread_id = processlist.id WHERE (NOW() - trx_started) > 60 ORDER BY trx_started"
         cursor.execute(sql)
-        result = cursor.fetchall()
-        columns = cursor.description
+        result = cursor.fetchone()
     cursor.close()
-    if result is None:
-        verbose("There are no transactions running > 60 seconds.")
-    else:
+    if result:
+        info("There are transactions running > 60 seconds.")
+        with conn.cursor() as cursor:
+            sql = "SELECT trx_id, trx_started, (NOW() - trx_started) trx_duration_seconds, id processlist_id, user, IF(LEFT(HOST, (LOCATE(':', host) - 1)) = '', host, LEFT(HOST, (LOCATE(':', host) - 1))) host, command, time, REPLACE(SUBSTRING(info,1,25),'\n','') info_25 FROM information_schema.innodb_trx JOIN information_schema.processlist ON innodb_trx.trx_mysql_thread_id = processlist.id WHERE (NOW() - trx_started) > 60 ORDER BY trx_started"
+            cursor.execute(sql)
+            result = cursor.fetchall()
+            columns = cursor.description
+        cursor.close()
         x = PrettyTable([columns[0][0], columns[1][0], columns[2][0], columns[3][0], columns[4][0], columns[5][0], columns[6][0], columns[7][0], columns[8][0]]) 
         for row in result:
             x.add_row([row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]])
         print x
-        error("There are transactions running > 60 seconds.")
+        error("COMMIT, ROLLBACK, or kill these transactions. Otherwise, use --no-transaction-check to ignore them.")
+    else:
+        verbose("There are no transactions running > 60 seconds.")
+
+def mysql_check_dirty_pages():
+    verbose("Checking dirty pages count.")
+    dirty_pages_start = mysql_get_status_variable("Innodb_buffer_pool_pages_dirty")
+    verbose("Dirty pages starting count is %s." % dirty_pages_start)
+    timeout = time.time() + 60
+    while True:
+        dirty_pages_current = mysql_get_status_variable("Innodb_buffer_pool_pages_dirty")
+        if dirty_pages_current == 0:
+            info("Dirty pages is 0.")
+            break
+        elif dirty_pages_current < (int(dirty_pages_start) * .10):
+            info("Dirty pages is %s, < 10% of the starting count." % dirty_pages_current) 
+            break
+        elif int(dirty_pages_current) < 500:
+            info("Dirty pages is %s, < 500." % dirty_pages_current)
+            break
+        elif time.time() > timeout:
+            info("Dirty pages is %s, and has not reached < 10% of the starting count after 1 minute. Continuing to prepare for shutdown." % dirty_pages_current)
+            break
+        else:
+            info("Dirty pages is %s, waiting (up to 1 minute) for it to get lower." % dirty_pages_current)
+            time.sleep(5)
 
 def mysql_prepare_shutdown():
-    print("Preparing MySQL for shutdown...")
+    print("\n" + time.ctime())
+    info("Preparing MySQL for shutdown.")
+
+    # Check if the host is a slave. If true, stop replication.
     is_slave = int(mysql_check_is_slave())
     if is_slave:
-        print("Stopping replication...")
         slave_parallel_workers = int(mysql_get_global_variable("slave_parallel_workers"))
         if slave_parallel_workers > 0:
+            # Move message to function
             verbose("This is a multi-threaded slave.")
         else:
            mysql_stop_slave_single_thread()
+
+    # Check for long running transactions.
     if options.no_transaction_check is None:
-        mysql_check_open_transactions()
+        mysql_check_long_transactions()
     else:
-        verbose("--no-transaction-check was used. Not checking for transactions running > 60 seconds.")
-    # kill long running connections
-    # fast shutdown=0, max dirty pages = 0
+        info("--no-transaction-check was used. Not checking for long running transactions.")
+
+    # Todo: Kill long running connections
+
+    # Set dirty pages and fast shutdown to 0
+    info("Setting innodb_max_dirty_pages_pct to 0")
+    mysql_query("SET GLOBAL innodb_max_dirty_pages_pct = 0")
+    mysql_check_dirty_pages()
+
+
     # print safe to shutdown
     # catch ctr+c
     # add error exits
