@@ -273,6 +273,7 @@ def mysql_prepare_safe_shutdown():
     # catch ctr+c
     # revert settings on error
     # add multi-thread/multi-channel slave support
+    # test python2 + python3 compatibility
     print("\nMySQL is prepared for a safe shutdown!")
 
 try:
