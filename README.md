@@ -14,10 +14,10 @@ pip install PyMySQL PTable
 - Set `innodb_max_dirty_pages_pct` to 0.
 - Check if `Innodb_buffer_pool_pages_dirty` is < 500 or < 10% of the starting number of dirty pages.
 	- If neither condition is met after 1 minute, the tool will continue to prepare for shutdown.
-- Set `innodb_fast_shutdown=0`
-- Enable `innodb_buffer_pool_dump_at_shutdown` and `innodb_buffer_pool_load_at_startup`.
-- Set `innodb_buffer_pool_dump_pct=75`
-- Recommend enabling `innodb_buffer_pool_load_at_startup`
+- Set `innodb_fast_shutdown=0`.
+- Enable `innodb_buffer_pool_dump_at_shutdown`.
+- Set `innodb_buffer_pool_dump_pct=75`.
+- Recommend enabling `innodb_buffer_pool_load_at_startup` if it's not already.
 
 # Options
 
