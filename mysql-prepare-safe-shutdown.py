@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+import ConfigParser as configparser
+#import configparser as ConfigParser
+#import ConfigParser as configparser
 import getpass
 import pymysql.cursors
 import os.path
@@ -12,9 +15,9 @@ def mysql_options():
     parser.add_option("-u", "--user", type="string", dest="user", help="MySQL user")
     parser.add_option("-p", "--password", type="string", dest="password", metavar="PASS", help="MySQL password")
     parser.add_option("--ask-pass", dest="ask_pass", action="store_true", help="Ask for password")
-    parser.add_option("-H", "--host", type="string", dest="host", default="localhost", help="MySQL host. Default: localhost")
-    parser.add_option("-P", "--port", type="int", dest="port", default="3306", help="MySQL port. Default: 3306")
-    parser.add_option("-S", "--socket", type="string", dest="socket", metavar="SOCK", help="MySQL socket.")
+    parser.add_option("-H", "--host", type="string", dest="host", help="MySQL host. Default: localhost")
+    parser.add_option("-P", "--port", type="int", dest="port", help="MySQL port. Default: 3306")
+    parser.add_option("-S", "--socket", type="string", dest="socket", metavar="SOCK", help="MySQL socket. Default: /var/lib/mysql/mysql.sock")
     parser.add_option("--defaults-file", dest="defaults_file", metavar="FILE", help="Use MySQL configuration file")
     parser.add_option("-t", "--no-transaction-check", action="store_true", dest="no_transaction_check", help="Do not check for transactions running > 60 seconds.")
     parser.add_option("-v", "--verbose", dest="verbose", action="store_true", help="Print additional information")
@@ -37,20 +40,78 @@ def error(message):
 def mysql_connect():
     if options.defaults_file is not None:
         connection = pymysql.connect(read_default_file = options.defaults_file)
-    #elif os.path.expanduser("~/.my.cnf"):
-        #defaults_file = os.path.expanduser("~/.my.cnf")
-        #connection = pymysql.connect(read_default_file = defaults_file)
     else:
-        if options.ask_pass:
-            password = getpass.getpass()
+        dot_my_cnf = os.path.expanduser("~/.my.cnf")
+        if os.path.isfile(dot_my_cnf):
+            parser = configparser.ConfigParser()
+            parser.read(dot_my_cnf)
+            # Set host
+            if options.host:
+                conn_host = options.host
+            else:
+                try:
+                    conn_host = parser.get('client','host')
+                except:
+                    conn_host = "localhost"
+            # Set user
+            if options.user:
+                conn_user = options.user
+            else:
+                try:
+                    conn_user = parser.get('client','user')
+                except:
+                    conn_user = None
+            # Set password
+            if options.ask_pass:
+                conn_password = getpass.getpass()
+            elif options.password:
+                conn_password = options.password
+            else:
+                try:
+                    conn_password = parser.get('client','password')
+                except:
+                    conn_password = None
+            # Set socket
+            if options.socket:
+                conn_socket = options.socket
+            else:
+                try:
+                    conn_socket = parser.get('client','socket')
+                except:
+                    conn_socket = "/var/lib/mysql/mysql.sock"
+            connection = pymysql.connect(
+                host = conn_host,
+                user = conn_user,
+                password = conn_password,
+                unix_socket = conn_socket)
         else:
-            password = options.password
-        connection = pymysql.connect(
-               host = options.host,
-               user = options.user,
-               password = password,
-               unix_socket = options.socket,
-               read_default_group = "client")
+            # Set host
+            if options.host:
+                conn_host = options.host
+            else:
+                conn_host = "localhost"
+            # Set user
+            if options.user:
+                conn_user = options.user
+            else:
+                conn_user = None
+            # Set password
+            if options.ask_pass:
+                conn_password = getpass.getpass()
+            elif options.password:
+                conn_password = options.password
+            else:
+                conn_password = None
+            # Set socket
+            if options.socket:
+                conn_socket = options.socket
+            else:
+                conn_socket = "/var/lib/mysql/mysql.sock"
+            connection = pymysql.connect(
+                host = conn_host,
+                user = conn_user,
+                password = conn_password,
+                unix_socket = conn_socket)
     return connection
 
 def mysql_get_global_variable(variable_name):
@@ -186,6 +247,8 @@ def mysql_set_buffer_pool_dump():
         warn("innodb_buffer_pool_load_at_startup is not enabled. You may want to set this in the my.cnf: innodb_buffer_pool_load_at_startup = ON")
 
 def mysql_prepare_safe_shutdown():
+    print("\n" + time.ctime())
+    info("Preparing MySQL for shutdown.")
     # Check if the host is a slave. If true, stop replication.
     is_slave = int(mysql_check_is_slave())
     if is_slave:
@@ -194,37 +257,29 @@ def mysql_prepare_safe_shutdown():
             error("This is a multi-threaded slave.")
         else:
            mysql_stop_slave_single_thread()
-
     # Check for long running transactions.
     if options.no_transaction_check is None:
         mysql_check_long_transactions()
     else:
         info("--no-transaction-check was used. Not checking for long running transactions.")
-
     # Todo: Kill long running connections.
-
     # Set dirty pages pct to 0. Check that dirty pages are low enough.
     mysql_set_dirty_pages()
     mysql_check_dirty_pages()
-
     # Set fast shutdown to 0.
     mysql_set_fast_shutdown()
-
     # Set buffer pool dump configurations.
     mysql_set_buffer_pool_dump()
-
     # catch ctr+c
     # revert settings on error
     # add multi-thread/multi-channel slave support
+    print("\nMySQL is prepared for a safe shutdown!")
 
 try:
-    print("\n" + time.ctime())
-    info("Preparing MySQL for shutdown.")
     conn = None
     (options, args) = mysql_options()
     conn = mysql_connect()
     mysql_prepare_safe_shutdown()
-    print("\nMySQL is prepared for a safe shutdown!")
 except pymysql.Error as e:
     error("ERROR " + str(e[0]) + ": " + e[1])
 finally:
