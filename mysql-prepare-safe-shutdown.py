@@ -12,15 +12,15 @@ from prettytable import PrettyTable
 
 def mysql_options():
     parser = OptionParser()
-    parser.add_option("-u", "--user", type="string", dest="user", help="MySQL user")
-    parser.add_option("-p", "--password", type="string", dest="password", metavar="PASS", help="MySQL password")
-    parser.add_option("--ask-pass", dest="ask_pass", action="store_true", help="Ask for password")
+    parser.add_option("-u", "--user", type="string", dest="user", help="MySQL user.")
+    parser.add_option("-p", "--password", type="string", dest="password", metavar="PASS", help="MySQL password.")
+    parser.add_option("--ask-pass", dest="ask_pass", action="store_true", help="Ask for password.")
     parser.add_option("-H", "--host", type="string", dest="host", help="MySQL host. Default: localhost")
     parser.add_option("-P", "--port", type="int", dest="port", help="MySQL port. Default: 3306")
     parser.add_option("-S", "--socket", type="string", dest="socket", metavar="SOCK", help="MySQL socket. Default: /var/lib/mysql/mysql.sock")
-    parser.add_option("--defaults-file", dest="defaults_file", metavar="FILE", help="Use MySQL configuration file")
+    parser.add_option("--defaults-file", dest="defaults_file", metavar="FILE", help="Use MySQL configuration file.")
     parser.add_option("-t", "--no-transaction-check", action="store_true", dest="no_transaction_check", help="Do not check for transactions running > 60 seconds.")
-    parser.add_option("-v", "--verbose", dest="verbose", action="store_true", help="Print additional information")
+    parser.add_option("-v", "--verbose", dest="verbose", action="store_true", help="Print additional information.")
     return parser.parse_args()
 
 def info(message):
@@ -41,77 +41,52 @@ def mysql_connect():
     if options.defaults_file is not None:
         connection = pymysql.connect(read_default_file = options.defaults_file)
     else:
-        dot_my_cnf = os.path.expanduser("~/.my.cnf")
-        if os.path.isfile(dot_my_cnf):
+        try:
+            dot_my_cnf = os.path.expanduser("~/.my.cnf")
             parser = configparser.ConfigParser()
             parser.read(dot_my_cnf)
-            # Set host
-            if options.host:
-                conn_host = options.host
-            else:
-                try:
-                    conn_host = parser.get('client','host')
-                except:
-                    conn_host = "localhost"
-            # Set user
-            if options.user:
-                conn_user = options.user
-            else:
-                try:
-                    conn_user = parser.get('client','user')
-                except:
-                    conn_user = None
-            # Set password
-            if options.ask_pass:
-                conn_password = getpass.getpass()
-            elif options.password:
-                conn_password = options.password
-            else:
-                try:
-                    conn_password = parser.get('client','password')
-                except:
-                    conn_password = None
-            # Set socket
-            if options.socket:
-                conn_socket = options.socket
-            else:
-                try:
-                    conn_socket = parser.get('client','socket')
-                except:
-                    conn_socket = "/var/lib/mysql/mysql.sock"
-            connection = pymysql.connect(
-                host = conn_host,
-                user = conn_user,
-                password = conn_password,
-                unix_socket = conn_socket)
-        else:
-            # Set host
-            if options.host:
-                conn_host = options.host
-            else:
-                conn_host = "localhost"
-            # Set user
-            if options.user:
-                conn_user = options.user
-            else:
-                conn_user = None
-            # Set password
-            if options.ask_pass:
-                conn_password = getpass.getpass()
-            elif options.password:
-                conn_password = options.password
-            else:
-                conn_password = None
-            # Set socket
-            if options.socket:
-                conn_socket = options.socket
-            else:
-                conn_socket = "/var/lib/mysql/mysql.sock"
-            connection = pymysql.connect(
-                host = conn_host,
-                user = conn_user,
-                password = conn_password,
-                unix_socket = conn_socket)
+            has_dot_my_cnf = 1
+        except:
+            has_dot_my_cnf = None
+        conn_host = "localhost"
+        if options.host:
+            conn_host = options.host
+        elif has_dot_my_cnf:
+            try:
+                conn_host = parser.get('client','host')
+            except:
+                pass
+        conn_user = None
+        if options.user:
+            conn_user = options.user
+        elif has_dot_my_cnf:
+            try:
+                conn_user = parser.get('client','user')
+            except:
+                pass
+        conn_password = None
+        if options.ask_pass:
+            conn_password = getpass.getpass()
+        elif options.password:
+            conn_password = options.password
+        elif has_dot_my_cnf:
+            try:
+                conn_password = parser.get('client','password')
+            except:
+                pass
+        conn_socket = "/var/lib/mysql/mysql.sock"
+        if options.socket:
+            conn_socket = options.socket
+        elif has_dot_my_cnf:
+            try:
+                conn_socket = parser.get('client','socket')
+            except:
+                pass
+        connection = pymysql.connect(
+            host = conn_host,
+            user = conn_user,
+            password = conn_password,
+            unix_socket = conn_socket)
     return connection
 
 def mysql_get_global_variable(variable_name):
@@ -183,6 +158,10 @@ def mysql_stop_slave_single_thread():
     if slave_io_running == "No" and slave_sql_running == "No":
         warn("Replication was already stopped.")
 
+def mysql_start_slave_single_thread():
+    info("Starting replication.")
+    mysql_query("START SLAVE")
+
 def mysql_check_long_transactions():
     info("Checking for long running transactions.")
     with conn.cursor() as cursor:
@@ -205,12 +184,11 @@ def mysql_check_long_transactions():
     else:
         verbose("There are no transactions running > 60 seconds.")
 
-def mysql_set_dirty_pages():
-    info("Setting innodb_max_dirty_pages_pct to 0.")
-    mysql_query("SET GLOBAL innodb_max_dirty_pages_pct = 0")
+def mysql_set_dirty_pages_pct(count):
+    info("Setting innodb_max_dirty_pages_pct to %s." % count)
+    mysql_query("SET GLOBAL innodb_max_dirty_pages_pct = %s" % count)
 
-def mysql_check_dirty_pages():
-    dirty_pages_start = int(mysql_get_status_variable("Innodb_buffer_pool_pages_dirty"))
+def mysql_check_dirty_pages(dirty_pages_start):
     verbose("Checking dirty pages. Starting count is %s." % dirty_pages_start)
     timeout = time.time() + 60
     while True:
@@ -222,7 +200,7 @@ def mysql_check_dirty_pages():
             verbose("Dirty pages is %s." % dirty_pages_current) 
             info("Dirty pages < 10% of the starting count.") 
             break
-        elif int(dirty_pages_current) < 500:
+        elif int(dirty_pages_current) > 500:
             verbose("Dirty pages is %s." % dirty_pages_current) 
             info("Dirty pages < 500.")
             break
@@ -240,7 +218,7 @@ def mysql_set_fast_shutdown():
 def mysql_set_buffer_pool_dump():
     info("Setting innodb_buffer_pool_dump_at_shutdown to ON.")
     mysql_query("SET GLOBAL innodb_buffer_pool_dump_at_shutdown = ON")
-    info("Setting setting innodb_buffer_pool_dump_pct to 75.")
+    info("Setting innodb_buffer_pool_dump_pct to 75.")
     mysql_query("SET GLOBAL innodb_buffer_pool_dump_pct = 75")
     buffer_pool_load = mysql_get_global_variable("innodb_buffer_pool_load_at_startup")
     if buffer_pool_load != "ON":
@@ -249,7 +227,7 @@ def mysql_set_buffer_pool_dump():
 def mysql_prepare_safe_shutdown():
     print("\n" + time.ctime())
     info("Preparing MySQL for shutdown.")
-    # Check if the host is a slave. If true, stop replication.
+    # Check if the host is a slave.
     is_slave = int(mysql_check_is_slave())
     if is_slave:
         slave_parallel_workers = int(mysql_get_global_variable("slave_parallel_workers"))
@@ -261,21 +239,30 @@ def mysql_prepare_safe_shutdown():
     if options.no_transaction_check is None:
         mysql_check_long_transactions()
     else:
-        info("--no-transaction-check was used. Not checking for long running transactions.")
-    # Todo: Kill long running connections.
+        warn("--no-transaction-check was used. Not checking for long running transactions.")
     # Set dirty pages pct to 0. Check that dirty pages are low enough.
-    mysql_set_dirty_pages()
-    mysql_check_dirty_pages()
+    dirty_pages_pct_original = float(mysql_get_global_variable("innodb_max_dirty_pages_pct"))
+    verbose("innodb_max_dirty_pages_pct was %s." % dirty_pages_pct_original)
+    dirty_pages_start = int(mysql_get_status_variable("Innodb_buffer_pool_pages_dirty"))
+    mysql_set_dirty_pages_pct(0)
+    try:
+        mysql_check_dirty_pages(dirty_pages_start)
+    except KeyboardInterrupt:
+        warn("CTL+C. Reverting changes.")
+        mysql_set_dirty_pages_pct(dirty_pages_pct_original)
+        if is_slave:
+            mysql_start_slave_single_thread()
+        error("Terminated.")
     # Set fast shutdown to 0.
     mysql_set_fast_shutdown()
     # Set buffer pool dump configurations.
     mysql_set_buffer_pool_dump()
-    # catch ctr+c
-    # revert settings on error
-    # add multi-thread/multi-channel slave support
-    # test python2 + python3 compatibility
     print("\nMySQL is prepared for a safe shutdown!")
 
+    # Todo:
+    # Kill long running connections.
+    # Add multi-thread/multi-channel slave support.
+    # Test python2 + python3 compatibility.
 try:
     conn = None
     (options, args) = mysql_options()
