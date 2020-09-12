@@ -11,13 +11,13 @@ pip install PyMySQL PTable
 - Check if the host is a replica.
 	- If yes, stop replication.
 - Check if any transactions are running > 60 seconds.
-        - If no, continue to prepare for shutdown.
+	- If no, continue to prepare for shutdown.
 	- If yes, print transaction details to review, restart replication, and exit.
-        - This check can be ignored with --no-transaction-check
+	- This check can be ignored with `--no-transaction-check`
 - Set `innodb_max_dirty_pages_pct` to 0.
 - Wait up to 1 minute for `Innodb_buffer_pool_pages_dirty` to be < 500 or < 10% of the starting number of dirty pages.
-	- If neither condition is true after 1 minute, the tool will continue to prepare for shutdown.
-        - You can abort with CTRL+C during this minute and the tool will restart replication and exit.
+	- If neither condition is true after 1 minute, the tool will still continue to prepare for shutdown.
+	- You can abort with CTRL+C during this minute and the tool will restart replication and exit.
 - Set `innodb_fast_shutdown=0`.
 - Enable `innodb_buffer_pool_dump_at_shutdown` and set `innodb_buffer_pool_dump_pct=75`.
 	- The tool will recommend enabling `innodb_buffer_pool_load_at_startup` if it's not already.
@@ -93,3 +93,4 @@ Aborting due to transactions found running > 60 seconds.
 - Add multi-threaded replica support.
 - Add multi-channel replica support.
 - Test python3 compatibility.
+- Revert `innodb_max_dirty_pages_pct` when aborting.
