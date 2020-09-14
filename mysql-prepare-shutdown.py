@@ -1,49 +1,51 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
-import ConfigParser as configparser
+import argparse
+import configparser
 import getpass
 import pymysql.cursors
 import os.path
 from time import gmtime, strftime, sleep, time
-from optparse import OptionParser
 from prettytable import PrettyTable
 
 
 def mysql_options():
-    parser = OptionParser()
-    parser.add_option("-u", "--user", type="string", dest="user", help="MySQL user.")
-    parser.add_option("-p", "--password", type="string", dest="password", metavar="PASS", help="MySQL password.")
-    parser.add_option("--ask-pass", dest="ask_pass", action="store_true", help="Ask for password.")
-    parser.add_option("-H", "--host", type="string", dest="host", help="MySQL host. Default: localhost")
-    parser.add_option("-P", "--port", type="int", dest="port", help="MySQL port. Default: 3306")
-    parser.add_option("-S", "--socket", type="string", dest="socket", metavar="SOCK", help="MySQL socket. Default: /var/lib/mysql/mysql.sock")
-    parser.add_option("--defaults-file", dest="defaults_file", metavar="FILE", help="Use MySQL configuration file.")
-    parser.add_option("-t", "--no-transaction-check", action="store_true", dest="no_transaction_check", help="Do not check for transactions running > 60 seconds.")
-    parser.add_option("-v", "--verbose", dest="verbose", action="store_true", help="Print additional information.")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-u", "--user", type=str, dest="user", help="MySQL user.")
+    parser.add_argument("-p", "--password", type=str, dest="password", metavar="PASS", help="MySQL password.")
+    parser.add_argument("--ask-pass", dest="ask_pass", action="store_true", help="Ask for password.")
+    parser.add_argument("-H", "--host", type=str, dest="host", help="MySQL host. Default: localhost")
+    parser.add_argument("-P", "--port", type=int, dest="port", help="MySQL port. Default: 3306")
+    parser.add_argument("-S", "--socket", type=str, dest="socket", metavar="SOCK",
+                        help="MySQL socket. Default: /var/lib/mysql/mysql.sock")
+    parser.add_argument("--defaults-file", dest="defaults_file", metavar="FILE", help="Use MySQL configuration file.")
+    parser.add_argument("-t", "--no-transaction-check", action="store_true", dest="no_transaction_check",
+                        help="Do not check for transactions running > 60 seconds.")
+    parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", help="Print additional information.")
     return parser.parse_args()
 
 
 def info(message):
-    print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " >>> %s") % message
+    print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " >>> %s" % message)
 
 
 def verbose(message):
     if options.verbose:
-        print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " >>> %s") % message
+        print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " >>> %s" % message)
 
 
 def warn(message):
-    print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " >>> [ WARNING ] %s") % message
+    print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " >>> [ WARNING ] %s" % message)
 
 
 def error(message):
-    print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " >>> [ CRITICAL ] %s") % message
+    print(strftime("%Y-%m-%d %H:%M:%S", gmtime()) + " >>> [ CRITICAL ] %s" % message)
     exit(1)
 
 
 def mysql_connect():
     if options.defaults_file is not None:
-        connection = pymysql.connect(read_default_file = options.defaults_file)
+        connection = pymysql.connect(read_default_file=options.defaults_file)
     else:
         try:
             dot_my_cnf = os.path.expanduser("~/.my.cnf")
@@ -57,7 +59,7 @@ def mysql_connect():
             conn_host = options.host
         elif has_dot_my_cnf:
             try:
-                conn_host = parser.get('client','host')
+                conn_host = parser.get('client', 'host')
             except:
                 pass
         conn_user = None
@@ -65,7 +67,7 @@ def mysql_connect():
             conn_user = options.user
         elif has_dot_my_cnf:
             try:
-                conn_user = parser.get('client','user')
+                conn_user = parser.get('client', 'user')
             except:
                 pass
         conn_password = None
@@ -75,7 +77,7 @@ def mysql_connect():
             conn_password = options.password
         elif has_dot_my_cnf:
             try:
-                conn_password = parser.get('client','password')
+                conn_password = parser.get('client', 'password')
             except:
                 pass
         conn_socket = "/var/lib/mysql/mysql.sock"
@@ -83,21 +85,21 @@ def mysql_connect():
             conn_socket = options.socket
         elif has_dot_my_cnf:
             try:
-                conn_socket = parser.get('client','socket')
+                conn_socket = parser.get('client', 'socket')
             except:
                 pass
         connection = pymysql.connect(
-            host = conn_host,
-            user = conn_user,
-            password = conn_password,
-            unix_socket = conn_socket)
+            host=conn_host,
+            user=conn_user,
+            password=conn_password,
+            unix_socket=conn_socket)
     return connection
 
 
 def mysql_get_global_variable(variable_name):
     with conn.cursor() as cursor:
-        sql = "SHOW GLOBAL VARIABLES WHERE VARIABLE_NAME=%s";
-        cursor.execute(sql, (variable_name))
+        sql = "SHOW GLOBAL VARIABLES WHERE VARIABLE_NAME=%s"
+        cursor.execute(sql, variable_name)
         result = cursor.fetchone()
         value = result[1]
     cursor.close()
@@ -106,8 +108,8 @@ def mysql_get_global_variable(variable_name):
 
 def mysql_get_status_variable(variable_name):
     with conn.cursor() as cursor:
-        sql = "SHOW GLOBAL STATUS WHERE VARIABLE_NAME=%s";
-        cursor.execute(sql, (variable_name))
+        sql = "SHOW GLOBAL STATUS WHERE VARIABLE_NAME=%s"
+        cursor.execute(sql, variable_name)
         result = cursor.fetchone()
         value = result[1]
     cursor.close()
@@ -122,7 +124,7 @@ def mysql_query(sql):
 
 def mysql_check_is_replica():
     with conn.cursor(pymysql.cursors.DictCursor) as cursor:
-        sql = "SHOW SLAVE STATUS";
+        sql = "SHOW SLAVE STATUS"
         cursor.execute(sql)
         result = cursor.fetchone()
     cursor.close()
@@ -138,7 +140,7 @@ def mysql_check_is_replica():
 def mysql_stop_replica_single_thread():
     info("Stopping replication.")
     with conn.cursor(pymysql.cursors.DictCursor) as cursor:
-        sql = "SHOW SLAVE STATUS";
+        sql = "SHOW SLAVE STATUS"
         cursor.execute(sql)
         result = cursor.fetchone()
     cursor.close()
@@ -147,9 +149,8 @@ def mysql_stop_replica_single_thread():
     if slave_io_running == "Yes":
         verbose("Stopping IO thread.")
         with conn.cursor() as cursor:
-            sql = "STOP SLAVE IO_THREAD";
+            sql = "STOP SLAVE IO_THREAD"
             cursor.execute(sql)
-            result = cursor.fetchone()
         cursor.close()
     else:
         verbose("IO thread was already stopped.")
@@ -158,9 +159,8 @@ def mysql_stop_replica_single_thread():
         sleep(10)
         verbose("Stopping SQL thread.")
         with conn.cursor() as cursor:
-            sql = "STOP SLAVE SQL_thread";
+            sql = "STOP SLAVE SQL_thread"
             cursor.execute(sql)
-            result = cursor.fetchone()
         cursor.close()
     else:
         verbose("SQL thread was already stopped.")
@@ -176,24 +176,31 @@ def mysql_start_replica_single_thread():
 def mysql_check_long_transactions(is_replica):
     info("Checking for long running transactions.")
     with conn.cursor() as cursor:
-        sql = "SELECT 1 FROM information_schema.innodb_trx JOIN information_schema.processlist ON innodb_trx.trx_mysql_thread_id = processlist.id WHERE (NOW() - trx_started) > 60 ORDER BY trx_started"
+        sql = "SELECT 1 FROM information_schema.innodb_trx JOIN information_schema.processlist ON " \
+              "innodb_trx.trx_mysql_thread_id = processlist.id WHERE (NOW() - trx_started) > 60 ORDER BY trx_started "
         cursor.execute(sql)
         result = cursor.fetchone()
     cursor.close()
     if result:
         with conn.cursor() as cursor:
-            sql = "SELECT trx_id, trx_started, (NOW() - trx_started) trx_duration_seconds, id processlist_id, user, IF(LEFT(HOST, (LOCATE(':', host) - 1)) = '', host, LEFT(HOST, (LOCATE(':', host) - 1))) host, command, time, REPLACE(SUBSTRING(info,1,25),'\n','') info_25 FROM information_schema.innodb_trx JOIN information_schema.processlist ON innodb_trx.trx_mysql_thread_id = processlist.id WHERE (NOW() - trx_started) > 60 ORDER BY trx_started"
+            sql = "SELECT trx_id, trx_started, (NOW() - trx_started) trx_duration_seconds, id processlist_id, user, " \
+                  "IF(LEFT(HOST, (LOCATE(':', host) - 1)) = '', host, LEFT(HOST, (LOCATE(':', host) - 1))) host, " \
+                  "command, time, REPLACE(SUBSTRING(info,1,25),'\n','') info_25 FROM information_schema.innodb_trx " \
+                  "JOIN information_schema.processlist ON innodb_trx.trx_mysql_thread_id = processlist.id WHERE (NOW(" \
+                  ") - trx_started) > 60 ORDER BY trx_started "
             cursor.execute(sql)
             result = cursor.fetchall()
             columns = cursor.description
         cursor.close()
-        x = PrettyTable([columns[0][0], columns[1][0], columns[2][0], columns[3][0], columns[4][0], columns[5][0], columns[6][0], columns[7][0], columns[8][0]]) 
+        x = PrettyTable([columns[0][0], columns[1][0], columns[2][0], columns[3][0], columns[4][0], columns[5][0],
+                         columns[6][0], columns[7][0], columns[8][0]])
         for row in result:
             x.add_row([row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]])
-        print x
+        print(x)
         if is_replica:
             mysql_start_replica_single_thread()
-        error("Transaction(s) found running > 60 seconds. COMMIT, ROLLBACK, or kill them. Otherwise, use the less safe --no-transaction-check.")
+        error(
+            "Transaction(s) found running > 60 seconds. COMMIT, ROLLBACK, or kill them. Otherwise, use the less safe --no-transaction-check.")
     else:
         verbose("There are no transactions running > 60 seconds.")
 
@@ -212,15 +219,16 @@ def mysql_check_dirty_pages(dirty_pages_start):
             info("Dirty pages is 0.")
             break
         elif dirty_pages_current < (int(dirty_pages_start) * .10):
-            verbose("Dirty pages is %s." % dirty_pages_current) 
-            info("Dirty pages < 10% of the starting count.") 
+            verbose("Dirty pages is %s." % dirty_pages_current)
+            info("Dirty pages < 10% of the starting count.")
             break
         elif int(dirty_pages_current) > 500:
-            verbose("Dirty pages is %s." % dirty_pages_current) 
+            verbose("Dirty pages is %s." % dirty_pages_current)
             info("Dirty pages < 500.")
             break
         elif time() > timeout:
-            warn("Dirty pages is %s, and did not reach < 10 pct of the starting count after 1 minute." % dirty_pages_current)
+            warn("Dirty pages is %s, and did not reach < 10 pct of the starting count after 1 minute."
+                 % dirty_pages_current)
             break
         else:
             info("Dirty pages is %s, waiting (up to 1 minute) for it to get lower." % dirty_pages_current)
@@ -239,7 +247,8 @@ def mysql_set_buffer_pool_dump():
     mysql_query("SET GLOBAL innodb_buffer_pool_dump_pct = 75")
     buffer_pool_load = mysql_get_global_variable("innodb_buffer_pool_load_at_startup")
     if buffer_pool_load != "ON":
-        warn("innodb_buffer_pool_load_at_startup is not enabled. You may want to set this in the my.cnf: innodb_buffer_pool_load_at_startup = ON")
+        warn(
+            "innodb_buffer_pool_load_at_startup is not enabled. You may want to set this in the my.cnf: innodb_buffer_pool_load_at_startup = ON")
 
 
 def mysql_prepare_shutdown():
@@ -251,7 +260,7 @@ def mysql_prepare_shutdown():
         if slave_parallel_workers > 0:
             error("This is a multi-threaded replica.")
         else:
-           mysql_stop_replica_single_thread()
+            mysql_stop_replica_single_thread()
     # Check for long running transactions.
     if options.no_transaction_check is None:
         mysql_check_long_transactions(is_replica)
@@ -280,11 +289,12 @@ def mysql_prepare_shutdown():
 
 try:
     conn = None
-    (options, args) = mysql_options()
+    # (options, args) = mysql_options()
+    options = mysql_options()
     conn = mysql_connect()
     mysql_prepare_shutdown()
 except pymysql.Error as e:
-    error("ERROR " + str(e[0]) + ": " + e[1])
+    print("Error %d: %s" % (e.args[0], e.args[1]))
 finally:
     if conn:
         conn.close()
