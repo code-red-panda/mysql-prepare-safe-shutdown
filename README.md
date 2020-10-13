@@ -7,7 +7,7 @@ pip install PyMySQL PTable
 ```
 
 # About
-`mysql-prepare-shutdown` will NOT stop MySQL. It will only prepare MySQL by doing the following:
+`crp-prepare-shutdown` will NOT stop MySQL. It will only prepare MySQL by doing the following:
 - Check if the host is a replica.
 	- If yes, stop replication.
 - Check if any transactions are running > 60 seconds.
@@ -25,7 +25,7 @@ pip install PyMySQL PTable
 
 # Options
 ```
-usage: mysql-prepare-shutdown.py [-h] [-u USER] [-p PASS] [--ask-pass] [-H HOST] [-P PORT] [-S SOCK] [--defaults-file FILE] [-t] [-v]
+usage: crp-prepare-shutdown.py [-h] [-u USER] [-p PASS] [--ask-pass] [-H HOST] [-P PORT] [-S SOCK] [--defaults-file FILE] [-t] [-v]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -51,7 +51,7 @@ Currently, this tool should not be used on:
 # Examples
 Happy path.
 ```
-# ./mysql-prepare-shutdown.py --verbose
+# ./crp-prepare-shutdown.py --verbose
 2020-09-12 18:28:41 >>> [ START ] Preparing MySQL for shutdown.
 2020-09-12 18:28:41 >>> This is a replica.
 2020-09-12 18:28:41 >>> Stopping replication.
@@ -73,7 +73,7 @@ Happy path.
 ```
 Aborting due to transactions found running > 60 seconds.
 ```
-# ./mysql-prepare-shutdown.py --verbose
+# ./crp-prepare-shutdown.py --verbose
 2020-09-12 18:36:09 >>> [ START ] Preparing MySQL for shutdown.
 2020-09-12 18:36:09 >>> This is a replica.
 2020-09-12 18:36:09 >>> Stopping replication.
