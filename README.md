@@ -1,5 +1,5 @@
 # Pre-Requisites
-- Python 3.2+
+- Python 3.2+ (3.8)
 - [PyMySQL](https://github.com/PyMySQL/PyMySQL) (Python connector)
 - [PTable](https://pypi.org/project/PTable/) (Print tabular data in a pretty table)
 ```
